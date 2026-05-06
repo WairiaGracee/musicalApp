@@ -1,109 +1,80 @@
 import { useEffect, useState } from 'react'
 import { Sparkles, Loader2, ExternalLink, Check } from 'lucide-react'
-import { plansDb, sessionsDb } from '../lib/db'
+import { plansApi } from '../api/plans'
 import type { WeeklyPlan } from '../types'
-import { format, startOfWeek, endOfWeek, parseISO } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 
 export function Plan() {
   const [plan, setPlan] = useState<WeeklyPlan | null>(null)
   const [aiThinking, setAiThinking] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const current = plansDb.getCurrent()
-    setPlan(current)
+    plansApi.getCurrent()
+      .then(p => { setPlan(p); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [])
 
-  const toggleTask = (taskId: string) => {
+  const toggleTask = async (taskId: string) => {
     if (!plan) return
-    const task = plan.tasks.find(t => t.id === taskId)
+    const task = plan.tasks.find((t: any) => t.id === taskId)
     if (!task) return
-    plansDb.updateTask(plan.id, taskId, !task.completed)
-    setPlan(plansDb.getCurrent())
+    try {
+      const updated = await plansApi.updateTask(plan.id, taskId, !task.completed)
+      setPlan(updated)
+    } catch {
+      // optimistic update fallback
+      setPlan(prev => prev ? {
+        ...prev,
+        tasks: prev.tasks.map((t: any) => t.id === taskId ? { ...t, completed: !t.completed } : t)
+      } : prev)
+    }
   }
 
   const generatePlan = async () => {
     setAiThinking(true)
     try {
-      const recentSessions = sessionsDb.getAll().slice(0, 6)
-      const sessionSummary = recentSessions.map(s =>
-        `${s.date}: ${s.type === 'voice' ? 'Voice' : 'Ear training'} — ${s.focus} (${s.durationMinutes} min, mood ${s.mood}/5). Notes: ${s.notes}`
-      ).join('\n')
-
-      const prompt = `You are a music coach helping a singer grow intentionally.
-
-The user is:
-- Intermediate vocalist (working on chest/head voice blend, breath support)
-- Beginner in ear training (piano-focused, online)
-
-Recent practice sessions:
-${sessionSummary || 'No sessions logged yet — this is their first week!'}
-
-Generate a focused weekly plan as JSON:
-{
-  "focus": "one sentence describing the week theme",
-  "aiSuggestion": "2-3 sentences of warm encouraging coaching advice",
-  "tasks": [
-    {
-      "id": "unique-id-1",
-      "type": "voice",
-      "title": "short task title",
-      "description": "specific actionable instructions",
-      "resources": ["optional url"],
-      "daysTarget": 3,
-      "completed": false
-    }
-  ]
-}
-
-Include 4-5 tasks: 2-3 voice, 2 ear training. Be specific. Resources only from musictheory.net, teoria.com, or YouTube.
-Respond ONLY with the JSON, no markdown.`
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      })
-
-      const data = await response.json()
-      const text = data.content?.map((c: { type: string; text?: string }) => c.text || '').join('') ?? ''
-      const clean = text.replace(/```json|```/g, '').trim()
-      const parsed = JSON.parse(clean)
-
-      const today = new Date()
-      const newPlan = plansDb.add({
-        weekStart: format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
-        weekEnd: format(endOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
-        focus: parsed.focus,
-        aiSuggestion: parsed.aiSuggestion,
-        tasks: parsed.tasks,
-      })
+      const newPlan = await plansApi.generate()
       setPlan(newPlan)
     } catch (err) {
-      console.error('AI plan generation failed:', err)
+      console.error('Plan generation failed:', err)
     } finally {
       setAiThinking(false)
     }
   }
 
-  const weekLabel = plan
-    ? `${format(parseISO(plan.weekStart), 'MMM d')} – ${format(parseISO(plan.weekEnd), 'MMM d, yyyy')}`
-    : format(new Date(), "'Week of' MMM d, yyyy")
+  // Safely format dates — handle both camelCase and snake_case from backend
+  const getWeekLabel = () => {
+    if (!plan) return format(new Date(), "'Week of' MMM d, yyyy")
+    const start = plan.weekStart || (plan as any).week_start
+    const end = plan.weekEnd || (plan as any).week_end
+    if (!start || !end) return 'This week'
+    try {
+      return `${format(parseISO(start), 'MMM d')} – ${format(parseISO(end), 'MMM d, yyyy')}`
+    } catch {
+      return 'This week'
+    }
+  }
 
-  const completedTasks = plan?.tasks.filter(t => t.completed).length ?? 0
+  const completedTasks = plan?.tasks.filter((t: any) => t.completed).length ?? 0
   const totalTasks = plan?.tasks.length ?? 0
+  const pct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 size={24} className="text-forest-400 animate-spin" />
+      </div>
+    )
+  }
 
   return (
     <div className="animate-fade-up max-w-2xl mx-auto">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="font-display text-3xl sm:text-4xl text-forest-800 mb-1">
           This week<span className="text-gold-400">.</span>
         </h1>
-        <p className="text-forest-400 text-sm">{weekLabel}</p>
+        <p className="text-forest-400 text-sm">{getWeekLabel()}</p>
       </div>
 
       {!plan ? (
@@ -124,7 +95,7 @@ Respond ONLY with the JSON, no markdown.`
         </div>
       ) : (
         <>
-          {/* AI coaching tip */}
+          {/* AI suggestion */}
           {plan.aiSuggestion && (
             <div className="bg-forest-800 rounded-2xl p-5 mb-5">
               <div className="flex items-center gap-2 mb-2">
@@ -138,17 +109,19 @@ Respond ONLY with the JSON, no markdown.`
           )}
 
           {/* Focus */}
-          <div className="mb-5">
-            <p className="text-xs text-forest-400 uppercase tracking-wider mb-1">Week focus</p>
-            <p className="font-display text-lg sm:text-xl text-forest-700">{plan.focus}</p>
-          </div>
+          {plan.focus && (
+            <div className="mb-5">
+              <p className="text-xs text-forest-400 uppercase tracking-wider mb-1">Week focus</p>
+              <p className="font-display text-lg sm:text-xl text-forest-700">{plan.focus}</p>
+            </div>
+          )}
 
-          {/* Progress */}
+          {/* Progress bar */}
           <div className="flex items-center gap-3 mb-5">
             <div className="flex-1 h-2 bg-cream-200 rounded-full">
               <div
                 className="h-2 bg-gold-400 rounded-full transition-all duration-500"
-                style={{ width: totalTasks > 0 ? `${(completedTasks / totalTasks) * 100}%` : '0%' }}
+                style={{ width: `${pct}%` }}
               />
             </div>
             <span className="text-sm text-forest-500 flex-shrink-0">{completedTasks}/{totalTasks}</span>
@@ -156,10 +129,10 @@ Respond ONLY with the JSON, no markdown.`
 
           {/* Tasks */}
           <div className="space-y-3">
-            {plan.tasks.map(task => (
+            {plan.tasks.map((task: any) => (
               <div
                 key={task.id}
-                className={`card cursor-pointer transition-all duration-200 active:scale-[0.99] ${task.completed ? 'opacity-60' : ''}`}
+                className={`card cursor-pointer transition-all active:scale-[0.99] ${task.completed ? 'opacity-60' : ''}`}
                 onClick={() => toggleTask(task.id)}
               >
                 <div className="flex items-start gap-3">
@@ -180,21 +153,24 @@ Respond ONLY with the JSON, no markdown.`
                     <p className="text-xs text-forest-400 leading-relaxed">{task.description}</p>
                     {task.resources && task.resources.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {task.resources.map(url => (
-                          <a
-                            key={url}
-                            href={url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-xs text-forest-500 underline underline-offset-2"
-                          >
-                            {new URL(url).hostname} <ExternalLink size={10} />
-                          </a>
-                        ))}
+                        {task.resources.map((url: string) => {
+                          try {
+                            return (
+                              <a key={url} href={url} target="_blank" rel="noopener noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-xs text-forest-500 underline underline-offset-2">
+                                {new URL(url).hostname} <ExternalLink size={10} />
+                              </a>
+                            )
+                          } catch {
+                            return <span key={url} className="text-xs text-forest-400">{url}</span>
+                          }
+                        })}
                       </div>
                     )}
-                    <p className="text-xs text-forest-300 mt-2">Target: {task.daysTarget}×/week</p>
+                    <p className="text-xs text-forest-300 mt-2">
+                      Target: {task.days_target || task.daysTarget || '—'}×/week
+                    </p>
                   </div>
                 </div>
               </div>

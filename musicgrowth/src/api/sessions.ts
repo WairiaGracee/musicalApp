@@ -1,9 +1,6 @@
 import { api } from './client'
 import type { PracticeSession } from '../types'
 
-// Backend uses snake_case, frontend uses camelCase
-// These functions handle the conversion
-
 export interface SessionPayload {
   date: string
   type: string
@@ -15,10 +12,30 @@ export interface SessionPayload {
   songs_worked_on: string[]
 }
 
+function toCamel(s: any): PracticeSession {
+  return {
+    id: String(s.id),
+    date: s.date,
+    type: s.type,
+    durationMinutes: s.duration_minutes,
+    focus: s.focus,
+    notes: s.notes || '',
+    mood: s.mood,
+    techniques: s.techniques || [],
+    songsWorkedOn: s.songs_worked_on || [],
+  }
+}
+
+function unwrap(data: any): any[] {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.results)) return data.results
+  return []
+}
+
 export const sessionsApi = {
   async getAll(): Promise<PracticeSession[]> {
-    const data = await api.get<any[]>('/api/sessions/')
-    return data.map(toCamel)
+    const data = await api.get<any>('/api/sessions/')
+    return unwrap(data).map(toCamel)
   },
 
   async create(session: Omit<PracticeSession, 'id'>): Promise<PracticeSession> {
@@ -39,18 +56,4 @@ export const sessionsApi = {
   async delete(id: string): Promise<void> {
     await api.delete(`/api/sessions/${id}/`)
   },
-}
-
-function toCamel(s: any): PracticeSession {
-  return {
-    id: String(s.id),
-    date: s.date,
-    type: s.type,
-    durationMinutes: s.duration_minutes,
-    focus: s.focus,
-    notes: s.notes,
-    mood: s.mood,
-    techniques: s.techniques || [],
-    songsWorkedOn: s.songs_worked_on || [],
-  }
 }

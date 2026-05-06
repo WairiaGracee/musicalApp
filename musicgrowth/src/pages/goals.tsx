@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Target, Plus, Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { goalsDb } from '../lib/db'
+import { goalsApi } from '../api/goals'
 import type { Goal, GoalStatus } from '../types'
 import { format, parseISO } from 'date-fns'
 
@@ -15,20 +15,17 @@ export function Goals() {
   })
 
   useEffect(() => {
-    const all = goalsDb.getAll()
-    setGoals(all)
+    goalsApi.getAll().then(setGoals).catch(() => null)
   }, [])
 
-  const reload = () => setGoals(goalsDb.getAll())
+  const reload = () => goalsApi.getAll().then(setGoals).catch(() => null)
 
   const toggleMilestone = (goalId: string, milestoneId: string) => {
-    goalsDb.toggleMilestone(goalId, milestoneId)
-    reload()
+    goalsApi.toggleMilestone(goalId, milestoneId).then(reload).catch(() => null)
   }
 
   const updateStatus = (id: string, status: GoalStatus) => {
-    goalsDb.update(id, { status })
-    reload()
+    goalsApi.update(id, { status }).then(reload).catch(() => null)
   }
 
   const handleAdd = () => {
@@ -36,10 +33,18 @@ export function Goals() {
     const milestones = [form.milestone1, form.milestone2, form.milestone3]
       .filter(m => m.trim())
       .map(m => ({ id: crypto.randomUUID(), title: m.trim(), completed: false }))
-    goalsDb.add({ title: form.title, description: form.description, type: form.type, targetDate: form.targetDate, status: 'active', milestones })
-    setForm({ title: '', description: '', type: 'voice', targetDate: '', milestone1: '', milestone2: '', milestone3: '' })
-    setShowForm(false)
-    reload()
+    goalsApi.create({
+      title: form.title,
+      description: form.description,
+      type: form.type,
+      targetDate: form.targetDate,
+      status: 'active',
+      milestones,
+    }).then(() => {
+      setForm({ title: '', description: '', type: 'voice', targetDate: '', milestone1: '', milestone2: '', milestone3: '' })
+      setShowForm(false)
+      reload()
+    }).catch(() => null)
   }
 
   const active = goals.filter(g => g.status === 'active')
@@ -57,7 +62,6 @@ export function Goals() {
         </button>
       </div>
 
-      {/* Add form */}
       {showForm && (
         <div className="card mb-5 animate-fade-up">
           <h2 className="font-display text-lg text-forest-800 mb-4">New goal</h2>
@@ -75,8 +79,11 @@ export function Goals() {
             <div>
               <p className="text-xs text-forest-400 uppercase tracking-wider mb-2">Milestones (up to 3)</p>
               <div className="space-y-2">
-                {['milestone1','milestone2','milestone3'].map((key, i) => (
-                  <input key={key} type="text" placeholder={`Milestone ${i + 1}`} value={form[key as keyof typeof form]} onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))} className="input text-sm" />
+                {['milestone1', 'milestone2', 'milestone3'].map((key, i) => (
+                  <input key={key} type="text" placeholder={`Milestone ${i + 1}`}
+                    value={form[key as keyof typeof form]}
+                    onChange={e => setForm(p => ({ ...p, [key]: e.target.value }))}
+                    className="input text-sm" />
                 ))}
               </div>
             </div>
@@ -88,15 +95,16 @@ export function Goals() {
         </div>
       )}
 
-      {/* Active */}
       {active.length > 0 && (
         <div className="mb-6">
           <p className="text-xs text-forest-400 uppercase tracking-wider mb-3">Active ({active.length})</p>
           <div className="space-y-3">
             {active.map(goal => (
-              <GoalCard key={goal.id} goal={goal} isExpanded={expanded === goal.id}
+              <GoalCard key={goal.id} goal={goal}
+                isExpanded={expanded === goal.id}
                 onToggleExpand={() => setExpanded(expanded === goal.id ? null : goal.id)}
-                onToggleMilestone={toggleMilestone} onUpdateStatus={updateStatus} />
+                onToggleMilestone={toggleMilestone}
+                onUpdateStatus={updateStatus} />
             ))}
           </div>
         </div>
@@ -109,15 +117,16 @@ export function Goals() {
         </div>
       )}
 
-      {/* Completed */}
       {completed.length > 0 && (
         <div>
           <p className="text-xs text-forest-400 uppercase tracking-wider mb-3">Completed ({completed.length})</p>
           <div className="space-y-3 opacity-60">
             {completed.map(goal => (
-              <GoalCard key={goal.id} goal={goal} isExpanded={expanded === goal.id}
+              <GoalCard key={goal.id} goal={goal}
+                isExpanded={expanded === goal.id}
                 onToggleExpand={() => setExpanded(expanded === goal.id ? null : goal.id)}
-                onToggleMilestone={toggleMilestone} onUpdateStatus={updateStatus} />
+                onToggleMilestone={toggleMilestone}
+                onUpdateStatus={updateStatus} />
             ))}
           </div>
         </div>

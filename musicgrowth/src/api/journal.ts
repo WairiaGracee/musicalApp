@@ -11,10 +11,16 @@ function toCamel(e: any): JournalEntry {
   }
 }
 
+function unwrap(data: any): any[] {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.results)) return data.results
+  return []
+}
+
 export const journalApi = {
   async getAll(): Promise<JournalEntry[]> {
-    const data = await api.get<any[]>('/api/journal/')
-    return data.map(toCamel)
+    const data = await api.get<any>('/api/journal/')
+    return unwrap(data).map(toCamel)
   },
 
   async create(entry: Omit<JournalEntry, 'id'>): Promise<JournalEntry> {

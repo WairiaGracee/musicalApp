@@ -1,6 +1,12 @@
 import { api } from './client'
 import type { WeeklySong, MonthlyChallenge } from '../types'
 
+function unwrap(data: any): any[] {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.results)) return data.results
+  return []
+}
+
 // ─── Songs ────────────────────────────────────────────────────────────────────
 
 function songToCamel(s: any): WeeklySong {
@@ -18,8 +24,8 @@ function songToCamel(s: any): WeeklySong {
 
 export const songsApi = {
   async getAll(): Promise<WeeklySong[]> {
-    const data = await api.get<any[]>('/api/songs/')
-    return data.map(songToCamel)
+    const data = await api.get<any>('/api/songs/')
+    return unwrap(data).map(songToCamel)
   },
 
   async getThisWeek(): Promise<WeeklySong[]> {
@@ -61,8 +67,8 @@ export const songsApi = {
   },
 
   async addRecording(songId: string, recording: Omit<WeeklySong['recordings'][0], 'id'>): Promise<WeeklySong> {
-    const songs = await this.getAll()
-    const song = songs.find(s => s.id === songId)
+    const all = await this.getAll()
+    const song = all.find(s => s.id === songId)
     if (!song) throw new Error('Song not found')
     const newRecording = { ...recording, id: crypto.randomUUID() }
     return this.update(songId, { recordings: [...song.recordings, newRecording] })
@@ -90,8 +96,13 @@ function challengeToCamel(c: any): MonthlyChallenge {
 
 export const challengesApi = {
   async getCurrent(): Promise<MonthlyChallenge | null> {
-    const data = await api.get<any>('/api/challenges/current/')
-    return data ? challengeToCamel(data) : null
+    try {
+      const data = await api.get<any>('/api/challenges/current/')
+      if (!data) return null
+      return challengeToCamel(data)
+    } catch {
+      return null
+    }
   },
 
   async generate(): Promise<MonthlyChallenge> {
@@ -100,7 +111,8 @@ export const challengesApi = {
   },
 
   async toggleExercise(challengeId: string, exerciseId: string): Promise<MonthlyChallenge> {
-    const challenges = await api.get<any[]>('/api/challenges/')
+    const all = await api.get<any>('/api/challenges/')
+    const challenges = unwrap(all)
     const challenge = challenges.find((c: any) => String(c.id) === challengeId)
     if (!challenge) throw new Error('Challenge not found')
 
@@ -114,7 +126,8 @@ export const challengesApi = {
   },
 
   async markDayDone(challengeId: string, date: string): Promise<MonthlyChallenge> {
-    const challenges = await api.get<any[]>('/api/challenges/')
+    const all = await api.get<any>('/api/challenges/')
+    const challenges = unwrap(all)
     const challenge = challenges.find((c: any) => String(c.id) === challengeId)
     if (!challenge) throw new Error('Challenge not found')
 

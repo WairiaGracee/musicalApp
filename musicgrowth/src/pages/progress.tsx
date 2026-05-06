@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
-import { sessionsDb } from '../lib/db'
+import { sessionsApi } from '../api/sessions'
 import type { PracticeSession } from '../types'
-import { format, parseISO, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks } from 'date-fns'
+import { format, parseISO, endOfWeek, eachWeekOfInterval, subWeeks } from 'date-fns'
 
 export function Progress() {
   const [sessions, setSessions] = useState<PracticeSession[]>([])
 
   useEffect(() => {
-    const all = sessionsDb.getAll()
-    setSessions(all)
+    sessionsApi.getAll().then(setSessions).catch(() => null)
   }, [])
 
   const now = new Date()
@@ -43,7 +42,6 @@ export function Progress() {
         <p className="text-forest-400 text-sm">See how far you've come.</p>
       </div>
 
-      {/* Stats grid — 2 cols on mobile, 4 on desktop */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
           { label: 'Total sessions', value: totalSessions.toString() },
@@ -58,7 +56,6 @@ export function Progress() {
         ))}
       </div>
 
-      {/* Chart */}
       <div className="card">
         <h2 className="font-display text-lg text-forest-800 mb-5">Practice — last 8 weeks</h2>
         {sessions.length > 0 ? (
@@ -78,18 +75,11 @@ export function Progress() {
           </div>
         )}
         <div className="flex items-center gap-5 mt-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-blush-300" />
-            <span className="text-xs text-forest-400">Voice</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-sm bg-forest-400" />
-            <span className="text-xs text-forest-400">Ear training</span>
-          </div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-blush-300" /><span className="text-xs text-forest-400">Voice</span></div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-sm bg-forest-400" /><span className="text-xs text-forest-400">Ear training</span></div>
         </div>
       </div>
 
-      {/* Mood tracker */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display text-lg text-forest-800">Session mood</h2>
@@ -104,7 +94,7 @@ export function Progress() {
               <p className="text-xs text-forest-400 w-14 flex-shrink-0">{format(parseISO(s.date), 'MMM d')}</p>
               <p className="text-xs text-forest-600 flex-1 truncate">{s.focus}</p>
               <div className="flex gap-0.5 flex-shrink-0">
-                {[1,2,3,4,5].map(n => (
+                {[1, 2, 3, 4, 5].map(n => (
                   <div key={n} className={`w-2 h-2 rounded-full ${n <= s.mood ? 'bg-gold-400' : 'bg-cream-200'}`} />
                 ))}
               </div>

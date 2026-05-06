@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, Plus, Trash2, ArrowLeft } from 'lucide-react'
-import { journalDb } from '../lib/db'
+import { journalApi } from '../api/journal'
 import type { JournalEntry } from '../types'
 import { format, parseISO } from 'date-fns'
 
@@ -11,33 +11,31 @@ export function Journal() {
   const [form, setForm] = useState({ title: '', content: '', tags: '' })
 
   useEffect(() => {
-    const all = journalDb.getAll()
-    setEntries(all)
+    journalApi.getAll().then(setEntries).catch(() => null)
   }, [])
 
-  const reload = () => setEntries(journalDb.getAll())
+  const reload = () => journalApi.getAll().then(setEntries).catch(() => null)
 
   const handleSave = () => {
     if (!form.content.trim()) return
-    journalDb.add({
+    journalApi.create({
       date: new Date().toISOString().split('T')[0],
       title: form.title || format(new Date(), 'MMMM d, yyyy'),
       content: form.content,
       tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-    })
-    setForm({ title: '', content: '', tags: '' })
-    setShowForm(false)
-    reload()
+    }).then(() => {
+      setForm({ title: '', content: '', tags: '' })
+      setShowForm(false)
+      reload()
+    }).catch(() => null)
   }
 
   const handleDelete = (id: string) => {
-    journalDb.delete(id)
-    if (selected?.id === id) setSelected(null)
-    reload()
+    journalApi.delete(id).then(() => {
+      if (selected?.id === id) setSelected(null)
+      reload()
+    }).catch(() => null)
   }
-
-  // On mobile: show list → tap → show entry (no split view)
-  // On desktop: split view
 
   if (selected && !showForm) {
     return (
@@ -82,9 +80,7 @@ export function Journal() {
               placeholder="Write freely about your session, how you felt, what clicked..."
               value={form.content}
               onChange={e => setForm(p => ({ ...p, content: e.target.value }))}
-              rows={8}
-              className="textarea"
-              autoFocus
+              rows={8} className="textarea" autoFocus
             />
             <input type="text" placeholder="Tags: voice, breakthrough, struggling..." value={form.tags} onChange={e => setForm(p => ({ ...p, tags: e.target.value }))} className="input" />
             <div className="flex gap-2 pt-1">
@@ -118,18 +114,11 @@ export function Journal() {
       ) : (
         <div className="space-y-3">
           {entries.map(entry => (
-            <div
-              key={entry.id}
-              onClick={() => setSelected(entry)}
-              className="card cursor-pointer hover:border-forest-300 transition-all active:scale-[0.99]"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-forest-700 mb-0.5 truncate">{entry.title}</p>
-                  <p className="text-xs text-forest-400 mb-2">{format(parseISO(entry.date), 'MMM d, yyyy')}</p>
-                  <p className="text-xs text-forest-400 line-clamp-2 leading-relaxed">{entry.content}</p>
-                </div>
-              </div>
+            <div key={entry.id} onClick={() => setSelected(entry)}
+              className="card cursor-pointer hover:border-forest-300 transition-all active:scale-[0.99]">
+              <p className="text-sm font-medium text-forest-700 mb-0.5 truncate">{entry.title}</p>
+              <p className="text-xs text-forest-400 mb-2">{format(parseISO(entry.date), 'MMM d, yyyy')}</p>
+              <p className="text-xs text-forest-400 line-clamp-2 leading-relaxed">{entry.content}</p>
               {entry.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-3">
                   {entry.tags.slice(0, 3).map(tag => (

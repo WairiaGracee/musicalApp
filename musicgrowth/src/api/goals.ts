@@ -5,7 +5,7 @@ function toCamel(g: any): Goal {
   return {
     id: String(g.id),
     title: g.title,
-    description: g.description,
+    description: g.description || '',
     type: g.type,
     targetDate: g.target_date || '',
     status: g.status,
@@ -13,10 +13,16 @@ function toCamel(g: any): Goal {
   }
 }
 
+function unwrap(data: any): any[] {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.results)) return data.results
+  return []
+}
+
 export const goalsApi = {
   async getAll(): Promise<Goal[]> {
-    const data = await api.get<any[]>('/api/goals/')
-    return data.map(toCamel)
+    const data = await api.get<any>('/api/goals/')
+    return unwrap(data).map(toCamel)
   },
 
   async create(goal: Omit<Goal, 'id'>): Promise<Goal> {
@@ -42,7 +48,8 @@ export const goalsApi = {
   },
 
   async toggleMilestone(goalId: string, milestoneId: string): Promise<Goal> {
-    const goals = await api.get<any[]>('/api/goals/')
+    const all = await api.get<any>('/api/goals/')
+    const goals = unwrap(all)
     const goal = goals.find((g: any) => String(g.id) === goalId)
     if (!goal) throw new Error('Goal not found')
 

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Flame, Check, Calendar, Sparkles, Loader2, Trophy, Target } from 'lucide-react'
-import { challengesDb } from '../lib/db'
+import { challengesApi } from '../api/songs'
 import type { MonthlyChallenge } from '../types'
-import { format, getDaysInMonth, parseISO, startOfMonth } from 'date-fns'
+import { format, getDaysInMonth } from 'date-fns'
 
 const MONTH_KEY = new Date().toISOString().slice(0, 7)
 
@@ -11,76 +11,32 @@ export function Challenge() {
   const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
-    const c = challengesDb.getMonth(MONTH_KEY)
-    setChallenge(c)
+    challengesApi.getCurrent().then(c => setChallenge(c)).catch(() => null)
   }, [])
 
-  const reload = () => setChallenge(challengesDb.getMonth(MONTH_KEY))
+  const reload = () => {
+    challengesApi.getCurrent().then(c => setChallenge(c)).catch(() => null)
+  }
 
-  const toggleExercise = (id: string) => {
-    challengesDb.toggleExercise(MONTH_KEY, id)
-    reload()
+  const toggleExercise = (exerciseId: string) => {
+    if (!challenge) return
+    challengesApi.toggleExercise(challenge.id, exerciseId).then(updated => {
+      setChallenge(updated)
+    }).catch(() => null)
   }
 
   const toggleDay = (date: string) => {
-    challengesDb.markDayDone(MONTH_KEY, date)
-    reload()
+    if (!challenge) return
+    challengesApi.markDayDone(challenge.id, date).then(updated => {
+      setChallenge(updated)
+    }).catch(() => null)
   }
 
   const generateChallenge = async () => {
     setGenerating(true)
     try {
-      const prompt = `You are a vocal coach creating a monthly challenge for a singer.
-
-The singer is:
-- Intermediate vocalist (working on chest/head voice blend)
-- Beginner in ear training
-- This month's theme: Riffs & Runs
-
-Generate a monthly challenge as JSON with this exact structure:
-{
-  "title": "short punchy challenge name",
-  "skill": "the skill being trained",
-  "description": "2-3 sentences explaining what the month is about and why this skill matters",
-  "targetSong": "Artist - Song that showcases this skill",
-  "exercises": [
-    {
-      "id": "uid1",
-      "title": "exercise name",
-      "description": "specific step by step instructions",
-      "completed": false
-    }
-  ]
-}
-
-Include exactly 4 exercises. Be specific, encouraging, and practical. Respond ONLY with the JSON.`
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      })
-      const data = await response.json()
-      const text = data.content?.map((c: { type: string; text?: string }) => c.text || '').join('') ?? ''
-      const clean = text.replace(/```json|```/g, '').trim()
-      const parsed = JSON.parse(clean)
-
-      const newChallenge: MonthlyChallenge = {
-        id: crypto.randomUUID(),
-        month: MONTH_KEY,
-        title: parsed.title,
-        skill: parsed.skill,
-        description: parsed.description,
-        targetSong: parsed.targetSong,
-        exercises: parsed.exercises,
-        completedDays: [],
-      }
-      challengesDb.saveMonth(newChallenge)
-      setChallenge(newChallenge)
+      const generated = await challengesApi.generate()
+      setChallenge(generated)
     } catch (err) {
       console.error('Challenge generation failed:', err)
     } finally {
@@ -97,7 +53,6 @@ Include exactly 4 exercises. Be specific, encouraging, and practical. Respond ON
 
   return (
     <div className="animate-fade-up px-4 sm:px-0 max-w-2xl mx-auto">
-      {/* Header */}
       <div className="mb-6">
         <p className="text-xs text-forest-400 uppercase tracking-wider mb-1">{monthLabel}</p>
         <h1 className="font-display text-3xl sm:text-4xl text-forest-800 mb-1">
@@ -107,7 +62,6 @@ Include exactly 4 exercises. Be specific, encouraging, and practical. Respond ON
       </div>
 
       {!challenge ? (
-        /* Empty state */
         <div className="card text-center py-16">
           <Trophy size={36} className="text-gold-400 mx-auto mb-4" />
           <h2 className="font-display text-2xl text-forest-800 mb-2">No challenge this month</h2>
@@ -205,7 +159,6 @@ Include exactly 4 exercises. Be specific, encouraging, and practical. Respond ON
               {['M','T','W','T','F','S','S'].map((d, i) => (
                 <p key={i} className="text-center text-xs text-forest-300 pb-1">{d}</p>
               ))}
-              {/* Offset for month start */}
               {Array.from({ length: (new Date(new Date().getFullYear(), new Date().getMonth(), 1).getDay() + 6) % 7 }).map((_, i) => (
                 <div key={`empty-${i}`} />
               ))}
@@ -236,7 +189,6 @@ Include exactly 4 exercises. Be specific, encouraging, and practical. Respond ON
             </div>
           </div>
 
-          {/* Regenerate */}
           <div className="text-center mt-4">
             <button
               onClick={generateChallenge}
